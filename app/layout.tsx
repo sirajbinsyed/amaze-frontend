@@ -5,10 +5,15 @@ import { GeistMono } from "geist/font/mono"
 import "./globals.css"
 import { AuthProvider } from "@/contexts/auth-context"
 
+// --- Update your metadata object ---
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.app",
+  title: "Amaze",
+  description: "ERP system",
+  generator: "ChoisirCraft",
+  // Add the icons property here
+  icons: {
+    icon: "/amaze logo.png", // This will point to the icon.png file in your app directory
+  },
 }
 
 export default function RootLayout({

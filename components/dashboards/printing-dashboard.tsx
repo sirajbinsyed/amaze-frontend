@@ -1,496 +1,842 @@
 "use client"
 
+import { useState, useEffect, useMemo } from "react"
 import { DashboardLayout } from "../dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useToast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog" 
+
+// API client and types (Assumed to be correctly exported from "@/lib/printing"):
+import { 
+  getAllTasks, 
+  editTask, 
+  getOrderById,
+  type DetailedTask, // Interface from projectManager.ts
+  type EditTaskPayload,
+  type OrderDetails, // Interface from projectManager.ts
+  type ApiResponse
+} from "@/lib/printing" // Ensure this path is correct for your project
+
 import {
-  Printer,
-  Package,
-  CheckCircle,
-  Clock,
+  Printer,       // Main icon for printing
+  Package,       // Daily Output / Delivery Type
+  CheckCircle,   // Completion / Quality Rate
+  Clock,         // Assigned On
   TrendingUp,
-  Search,
-  Filter,
-  Eye,
+  Filter,        // Filter icon
+  Eye,           // View Order
   Plus,
-  AlertTriangle,
   Settings,
-  Zap,
-  PlayCircle,
-  PauseCircle,
+  Zap,           // In Progress
+  UserPlus,      // Assigned By
+  Calendar,      // Project Target Date
+  FolderOpen,    // Order ID
+  Loader2,       // Loading state
+  AlertCircle,   // Error/Filter miss
+  CheckSquare,   // No Tasks state
+  MessageSquare, // WhatsApp
+  IndianRupee, 
+  Phone,       
+  CreditCard,  
+  Truck,       
+  XCircle,     
+  Hourglass,     // Task Completion Due Date
+  Check as CheckIcon, // Actual Completed Date
 } from "lucide-react"
 
-const printQueue = [
-  {
-    id: "PQ-001",
-    jobName: "Acme Corp Frame Set",
-    orderNumber: "ORD-001",
-    priority: "high",
-    status: "printing",
-    progress: 65,
-    estimatedTime: "2h 15m",
-    material: "Premium Wood",
-    quantity: 5,
-    printer: "HP-001",
-  },
-  {
-    id: "PQ-002",
-    jobName: "Restaurant Menu Frames",
-    orderNumber: "ORD-002",
-    priority: "medium",
-    status: "queued",
-    progress: 0,
-    estimatedTime: "1h 30m",
-    material: "Metal Frame",
-    quantity: 12,
-    printer: "HP-002",
-  },
-  {
-    id: "PQ-003",
-    jobName: "Fashion Display Frames",
-    orderNumber: "ORD-003",
-    priority: "low",
-    status: "completed",
-    progress: 100,
-    estimatedTime: "3h 45m",
-    material: "Acrylic",
-    quantity: 8,
-    printer: "HP-001",
-  },
-]
 
-const materials = [
-  { name: "Premium Wood", stock: 245, unit: "sheets", status: "good", reorderLevel: 50, cost: "$12.50" },
-  { name: "Metal Frame Stock", stock: 89, unit: "pieces", status: "low", reorderLevel: 100, cost: "$8.75" },
-  { name: "Acrylic Sheets", stock: 156, unit: "sheets", status: "good", reorderLevel: 75, cost: "$15.20" },
-  { name: "Glass Panels", stock: 23, unit: "pieces", status: "critical", reorderLevel: 50, cost: "$22.00" },
-  { name: "Mounting Hardware", stock: 340, unit: "sets", status: "good", reorderLevel: 100, cost: "$3.25" },
-]
+// --- Helper Functions ---
 
-const equipment = [
-  {
-    id: "HP-001",
-    name: "High-Precision Cutter",
-    status: "active",
-    utilization: 85,
-    maintenance: "Due in 5 days",
-    lastService: "2024-01-01",
-  },
-  {
-    id: "HP-002",
-    name: "Frame Assembly Unit",
-    status: "idle",
-    utilization: 45,
-    maintenance: "Up to date",
-    lastService: "2024-01-10",
-  },
-  {
-    id: "HP-003",
-    name: "Quality Scanner",
-    status: "maintenance",
-    utilization: 0,
-    maintenance: "In progress",
-    lastService: "2024-01-15",
-  },
-]
+/**
+ * Checks if the given date string corresponds to today's date (ignoring time).
+ */
+const isDateToday = (dateString?: string | null): boolean => {
+    if (!dateString) return false;
+    
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return false;
 
-const qualityChecks = [
-  {
-    id: "QC-001",
-    jobId: "PQ-003",
-    item: "Fashion Display Frame #1",
-    status: "passed",
-    inspector: "QC Team",
-    date: "2024-01-18",
-    issues: 0,
-  },
-  {
-    id: "QC-002",
-    jobId: "PQ-003",
-    item: "Fashion Display Frame #2",
-    status: "failed",
-    inspector: "QC Team",
-    date: "2024-01-18",
-    issues: 2,
-  },
-  {
-    id: "QC-003",
-    jobId: "PQ-001",
-    item: "Acme Corp Frame #1",
-    status: "pending",
-    inspector: "QC Team",
-    date: "2024-01-19",
-    issues: 0,
-  },
-]
+    const today = new Date();
+    
+    // Normalize both to start of day for accurate comparison
+    date.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
 
+    return date.getTime() === today.getTime();
+};
+
+/**
+ * Helper for task status badge colors
+ */
+const getTaskStatusColor = (status?: string | null) => {
+  switch (status) {
+    case "completed":
+      return "bg-green-100 text-green-800"
+    case "printing":
+    case "in_progress":
+      return "bg-blue-100 text-blue-800"
+    case "queued":
+    case "pending":
+    case "assigned":
+      return "bg-yellow-100 text-yellow-800"
+    default:
+      return "bg-gray-100 text-gray-800"
+  }
+}
+
+// Helper for payment status badge
+const getPaymentStatusBadge = (status: string) => {
+    const lowerStatus = status.toLowerCase();
+    let color = 'bg-gray-100 text-gray-800';
+    let label = status;
+
+    if (lowerStatus === 'paid' || lowerStatus === 'completed') {
+        color = 'bg-green-100 text-green-800';
+    } else if (lowerStatus === 'pending' || lowerStatus === 'unpaid') {
+        color = 'bg-red-100 text-red-800';
+    } else if (lowerStatus === 'partial') {
+        color = 'bg-yellow-100 text-yellow-800';
+    }
+
+    return <Badge className={`capitalize ${color}`}>{label.replace(/_/g, ' ')}</Badge>;
+};
+
+// Helper for Order Status Color
+const getProjectStatusColor = (status?: string | null) => {
+    switch (status) {
+      case 'completed': return 'bg-green-100 text-green-800'
+      case 'in_progress': return 'bg-blue-100 text-blue-800'
+      case 'pending': return 'bg-orange-100 text-orange-800'
+      case 'cancelled': return 'bg-red-100 text-red-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+}
+
+
+// --- PRINTING METRICS ---
 const printingMetrics = [
-  { name: "Active Jobs", value: "8", change: "+2", icon: Printer },
-  { name: "Daily Output", value: "24", change: "+6", icon: Package },
-  { name: "Quality Rate", value: "96%", change: "+2%", icon: CheckCircle },
-  { name: "Equipment Uptime", value: "94%", change: "+1%", icon: Settings },
+    { name: "Active Print Jobs", value: "8", change: "+2", icon: Printer },
+    { name: "Daily Output", value: "24", change: "+6", icon: Package },
+    { name: "Quality Rate", value: "96%", change: "+2%", icon: CheckCircle },
+    { name: "Equipment Uptime", value: "94%", change: "+1%", icon: Settings },
 ]
 
-export function PrintingDashboard() {
-  return (
-    <DashboardLayout title="Printing Dashboard" role="printing">
-      {/* FIX: Main wrapper for layout control, scrolling, and responsive padding. */}
-      <main className="flex-1 space-y-6 p-4 md:p-6 overflow-y-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {printingMetrics.map((metric) => {
-            const Icon = metric.icon
-            return (
-              <Card key={metric.name}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{metric.name}</CardTitle>
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{metric.value}</div>
-                  <p className="text-xs text-green-600 flex items-center">
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                    {metric.change} today
-                  </p>
-                </CardContent>
-              </Card>
-            )
-          })}
+// --- Reusable Filter Controls Component ---
+interface FilterControlsProps {
+    filterStatus: string;
+    setFilterStatus: (status: string) => void;
+    filterAssignedDateFrom: string;
+    setFilterAssignedDateFrom: (date: string) => void;
+    filterCompletionDateTo: string;
+    setFilterCompletionDateTo: (date: string) => void;
+    filterProjectTargetDateTo: string;
+    setFilterProjectTargetDateTo: (date: string) => void;
+    
+    handleClearFilters: () => void;
+    isFilterActive: boolean;
+    isMobile?: boolean;
+}
+
+const FilterControls: React.FC<FilterControlsProps> = ({
+    filterStatus, setFilterStatus,
+    filterAssignedDateFrom, setFilterAssignedDateFrom,
+    filterCompletionDateTo, setFilterCompletionDateTo,
+    filterProjectTargetDateTo, setFilterProjectTargetDateTo,
+    handleClearFilters, isFilterActive, isMobile = false
+}) => (
+    <div className={`flex flex-wrap items-end gap-3 ${isMobile ? 'flex-col items-stretch' : ''}`}>
+        
+        {/* Status Filter */}
+        <div className={`flex flex-col gap-1 ${isMobile ? 'w-full' : 'w-[150px] flex-shrink-0'}`}>
+            <label className="text-xs font-medium text-gray-600">Status</label>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger>
+                    <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="assigned">Queued / Assigned</SelectItem>
+                    <SelectItem value="in_progress">In Progress / Printing</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                </SelectContent>
+            </Select>
         </div>
 
-        <Tabs defaultValue="queue" className="space-y-6">
-          {/* FIX: Responsive Tabs list */}
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
-            <TabsTrigger value="queue">Print Queue</TabsTrigger>
-            <TabsTrigger value="materials">Materials</TabsTrigger>
-            <TabsTrigger value="equipment">Equipment</TabsTrigger>
-            <TabsTrigger value="quality">Quality Control</TabsTrigger>
-          </TabsList>
+        {/* Assigned Date Filter (FROM) */}
+        <div className={`flex flex-col gap-1 ${isMobile ? 'w-full' : 'w-[180px] flex-shrink-0'}`}>
+            <label className="text-xs font-medium text-gray-600">Task Assigned After</label>
+            <Input 
+                type="date" 
+                value={filterAssignedDateFrom} 
+                onChange={(e) => setFilterAssignedDateFrom(e.target.value)} 
+            />
+        </div>
 
-          <TabsContent value="queue" className="space-y-6">
+        {/* Task Completion Date Filter (TO) */}
+        <div className={`flex flex-col gap-1 ${isMobile ? 'w-full' : 'w-[180px] flex-shrink-0'}`}>
+            <label className="text-xs font-medium text-gray-600">Task Completed Before</label>
+            <Input 
+                type="date" 
+                value={filterCompletionDateTo} 
+                onChange={(e) => setFilterCompletionDateTo(e.target.value)} 
+            />
+        </div>
+        
+        {/* Project Target Date Filter (TO) */}
+        <div className={`flex flex-col gap-1 ${isMobile ? 'w-full' : 'w-[180px] flex-shrink-0'}`}>
+            <label className="text-xs font-medium text-red-700 font-semibold">Project Due Before</label>
+            <Input 
+                type="date" 
+                value={filterProjectTargetDateTo} 
+                onChange={(e) => setFilterProjectTargetDateTo(e.target.value)} 
+            />
+        </div>
+        
+        {/* Clear Button */}
+        {(isFilterActive || isMobile) && (
+            <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleClearFilters} 
+                className={`${isMobile ? 'w-full mt-4' : 'mt-auto h-9'} text-red-600 border-red-200 hover:bg-red-50`}
+            >
+                <XCircle className="h-4 w-4 mr-1" />
+                Clear Filters
+            </Button>
+        )}
+    </div>
+);
+
+
+// --- MAIN COMPONENT ---
+export function PrintingDashboard() {
+  const { toast } = useToast()
+
+  // --- STATE MANAGEMENT ---
+  const [tasks, setTasks] = useState<DetailedTask[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [updatingTaskId, setUpdatingTaskId] = useState<number | null>(null)
+  
+  const [viewingOrder, setViewingOrder] = useState<OrderDetails | null>(null)
+  const [isOrderDetailsLoading, setIsOrderDetailsLoading] = useState(false)
+  
+  // --- STATE MANAGEMENT FOR FILTERS ---
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterAssignedDateFrom, setFilterAssignedDateFrom] = useState<string>(''); 
+  const [filterCompletionDateTo, setFilterCompletionDateTo] = useState<string>(''); 
+  const [filterProjectTargetDateTo, setFilterProjectTargetDateTo] = useState<string>(''); 
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false); 
+
+
+  // --- DATA FETCHING FOR TASKS ---
+  useEffect(() => {
+    loadTasks()
+  }, [])
+
+  const loadTasks = async () => {
+    setIsLoading(true)
+    setError(null)
+    const response = await getAllTasks()
+
+    if (response.error) {
+      setError(response.error)
+      toast({ variant: "destructive", title: "Failed to load tasks", description: response.error })
+    } else if (response.data) {
+      setTasks(response.data)
+    }
+    setIsLoading(false)
+  }
+  
+  // --- HANDLER FOR VIEWING ORDER DETAILS ---
+  const handleViewOrder = async (orderId: number) => {
+    setViewingOrder(null);
+    setIsOrderDetailsLoading(true);
+    
+    const response = await getOrderById(orderId);
+    
+    if (response.data) {
+        setViewingOrder(response.data);
+    } else {
+        console.error("Failed to load detailed order view:", response.error);
+        toast({
+            title: "Error",
+            description: response.error || "Failed to load detailed order information.",
+            variant: "destructive",
+        });
+    }
+    
+    setIsOrderDetailsLoading(false);
+  }
+
+  // --- HANDLER FOR TASK STATUS UPDATE ---
+  const handleStatusChange = async (taskId: number, newStatus: string) => {
+    setUpdatingTaskId(taskId)
+    const payload: EditTaskPayload = { status: newStatus }
+    
+    // Auto-set completion time if marking as complete
+    if (newStatus === "completed") {
+      payload.completion_time = new Date().toISOString(); 
+    }
+    
+    const response = await editTask(taskId, payload)
+
+    if (response.error) {
+      toast({ variant: "destructive", title: "Update Failed", description: response.error })
+    } else {
+      toast({ title: "Status Updated", description: `Task status changed to ${newStatus.replace(/_/g, ' ')}.` })
+      loadTasks() // Refresh data to show changes
+    }
+    setUpdatingTaskId(null)
+  }
+
+  // --- FILTERING LOGIC ---
+  const getFilteredTasks = useMemo(() => {
+    if (!tasks) return [];
+    let filtered = tasks;
+
+    // 1. Status Filter
+    if (filterStatus !== 'all') {
+        filtered = filtered.filter(task => task.status === filterStatus);
+    }
+
+    // 2. Assigned Date 
+    if (filterAssignedDateFrom) {
+        const filterDate = new Date(filterAssignedDateFrom);
+        filterDate.setHours(0, 0, 0, 0); 
+        
+        filtered = filtered.filter(task => {
+            if (!task.assigned_on) return false;
+            const taskDate = new Date(task.assigned_on);
+            // Ignore time components
+            taskDate.setHours(0, 0, 0, 0);
+            return taskDate.getTime() >= filterDate.getTime();
+        });
+    }
+    
+    // 3. Task Completion Date 
+    if (filterCompletionDateTo) {
+        const filterDate = new Date(filterCompletionDateTo);
+        filterDate.setHours(23, 59, 59, 999); 
+
+        filtered = filtered.filter(task => {
+            // Check against completion_time (the target deadline) or completed_on (actual finish date)
+            const completionDateStr = task.completion_time || task.completed_on; 
+            
+            if (task.status !== 'completed' || !completionDateStr) return false;
+            const taskCompletionDate = new Date(completionDateStr);
+            return taskCompletionDate.getTime() <= filterDate.getTime();
+        });
+    }
+
+    // 4. Project Target Completion Date Filter
+    if (filterProjectTargetDateTo) {
+        const filterDate = new Date(filterProjectTargetDateTo);
+        filterDate.setHours(23, 59, 59, 999); 
+
+        filtered = filtered.filter(task => {
+            if (!task.order_completion_date) return false;
+            
+            const projectTargetDate = new Date(task.order_completion_date);
+            return projectTargetDate.getTime() <= filterDate.getTime();
+        });
+    }
+
+    return filtered;
+  }, [tasks, filterStatus, filterAssignedDateFrom, filterCompletionDateTo, filterProjectTargetDateTo]);
+
+  // --- CLEAR FILTERS HANDLER ---
+  const handleClearFilters = () => {
+      setFilterStatus('all');
+      setFilterAssignedDateFrom('');
+      setFilterCompletionDateTo('');
+      setFilterProjectTargetDateTo(''); 
+      toast({ description: "Filters cleared." });
+  }
+
+  // Determine if any filter is active
+  const isFilterActive = filterStatus !== 'all' 
+    || filterAssignedDateFrom 
+    || filterCompletionDateTo
+    || filterProjectTargetDateTo;
+
+
+  return (
+    <DashboardLayout title="Printing Dashboard" role="printing">
+
+      <Tabs defaultValue="tasks" className="space-y-6"> 
+        
+        {/* --- TABS LIST (Simplified) --- */}
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="tasks">Print Tasks</TabsTrigger>
+          <TabsTrigger value="reports">Reports</TabsTrigger>
+        </TabsList>
+
+        {/* ==================================================================== */}
+        {/* REPORTS SECTION (New) */}
+        {/* ==================================================================== */}
+        <TabsContent value="reports" className="space-y-6">
+            <h3 className="text-xl font-semibold mb-4">Performance Overview</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                {printingMetrics.map((metric) => {
+                    const Icon = metric.icon
+                    return (
+                        <Card key={metric.name}>
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-sm font-medium">{metric.name}</CardTitle>
+                                <Icon className="h-4 w-4 text-muted-foreground" />
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold">{metric.value}</div>
+                                <p className="text-xs text-green-600 flex items-center">
+                                    <TrendingUp className="h-3 w-3 mr-1" />
+                                    {metric.change} this month
+                                </p>
+                            </CardContent>
+                        </Card>
+                    )
+                })}
+            </div>
+            
             <Card>
-              <CardHeader>
-                {/* FIX: Card header stacks on mobile */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <CardHeader><CardTitle>Detailed Analytics</CardTitle></CardHeader>
+                <CardContent>
+                    <p className="text-sm text-gray-500">Further charts and analytical reports will be displayed here.</p>
+                </CardContent>
+            </Card>
+        </TabsContent>
+
+
+        {/* ==================================================================== */}
+        {/* LIVE TASK SECTION (Print Tasks)                                    */}
+        {/* ==================================================================== */}
+        <TabsContent value="tasks" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div>
                     <CardTitle className="flex items-center">
-                      <Printer className="h-5 w-5 mr-2" />
-                      Print Queue Management
+                      <Printer className="h-5 w-5 mr-2" />Print Queue Management
                     </CardTitle>
-                    <CardDescription>Monitor and manage printing jobs and production queue</CardDescription>
+                    <CardDescription>
+                      Monitor and manage printing jobs. Update status from Queued -> In Progress -> Completed.
+                    </CardDescription>
                   </div>
-                  <Button className="w-full sm:w-auto">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Job
+                 
+              </div>
+            </CardHeader>
+            <CardContent>
+
+              {/* --- DESKTOP FILTER BAR --- */}
+              <div className="hidden md:flex items-end gap-3 mb-6 p-4 border rounded-lg bg-gray-50 overflow-x-auto">
+                  <Filter className="h-5 w-5 text-gray-500 mr-2 flex-shrink-0" />
+                  <FilterControls 
+                      filterStatus={filterStatus}
+                      setFilterStatus={setFilterStatus}
+                      filterAssignedDateFrom={filterAssignedDateFrom}
+                      setFilterAssignedDateFrom={setFilterAssignedDateFrom}
+                      filterCompletionDateTo={filterCompletionDateTo}
+                      setFilterCompletionDateTo={setFilterCompletionDateTo}
+                      filterProjectTargetDateTo={filterProjectTargetDateTo} 
+                      setFilterProjectTargetDateTo={setFilterProjectTargetDateTo} 
+                      handleClearFilters={handleClearFilters}
+                      isFilterActive={isFilterActive}
+                      isMobile={false}
+                  />
+              </div>
+
+              {/* --- MOBILE FILTER BUTTON --- */}
+              <div className="md:hidden flex justify-between items-center mb-4">
+                  <Button 
+                      variant="outline" 
+                      onClick={() => setIsMobileFilterOpen(true)}
+                      className="w-full"
+                  >
+                      <Filter className="h-4 w-4 mr-2" />
+                      {isFilterActive ? `Filters Active (${isFilterActive ? 'On' : 'Off'})` : "Filter Tasks"}
                   </Button>
+              </div>
+
+
+              {isLoading ? (
+                // ... Loading State ...
+                <div className="flex items-center justify-center py-20">
+                    <div className="text-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
+                        <p className="mt-2 text-sm text-gray-500">Loading print tasks...</p>
+                    </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center space-x-2 mb-6">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input placeholder="Search print jobs..." className="pl-10" />
+              ) : error ? (
+                // ... Error State ...
+                <div className="text-center py-20 text-red-600">
+                    <AlertCircle className="h-12 w-12 mx-auto mb-4" />
+                    <p className="font-semibold">Failed to load print queue</p>
+                    <p className="text-sm">{error}</p>
+                </div>
+              ) : tasks.length === 0 ? (
+                // ... No Tasks State ...
+                <div className="text-center py-20">
+                    <CheckSquare className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">The print queue is empty. No tasks to show.</p>
+                </div>
+              ) : getFilteredTasks.length === 0 ? (
+                // ... No Filter Match State ...
+                <div className="text-center py-20">
+                    <AlertCircle className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+                    <p className="text-gray-500">No print tasks match the current filter criteria.</p>
+                </div>
+              ) : (
+                // --- Task List ---
+                <div className="space-y-4">
+                  {getFilteredTasks.map((task) => {
+                    
+                    // Determine styling for Project Target Date
+                    const isTargetToday = isDateToday(task.order_completion_date);
+                    const targetClass = isTargetToday 
+                        ? 'font-bold text-red-700 bg-red-100 p-1 rounded' 
+                        : 'text-gray-600';
+                        
+                    return (
+                        <div key={task.id} className="border rounded-lg p-4">
+                            <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+                                {/* Task Details */}
+                                <div className="flex-1">
+                                    <p className="font-semibold text-lg">{task.task_description || "Untitled Print Job"}</p>
+                                    <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
+                                        
+                                        {/* 1. Project ID */}
+                                        <span className="flex items-center">
+                                            <FolderOpen className="h-4 w-4 mr-2 text-gray-400" />
+                                            Order ID: ORD-{task.order_id}
+                                        </span>
+                                        
+                                        {/* 2. Task Assigned On Date (Only Date) */}
+                                        <span className="flex items-center">
+                                            <Clock className="h-4 w-4 mr-2 text-gray-400" />
+                                            Task Assigned On: {new Date(task.assigned_on).toLocaleDateString()}
+                                        </span>
+                                        
+                                        {/* 3. Task Completion Due (Shows deadline if one exists, regardless of status) */}
+                                        {task.completion_time && (
+                                            <span className="flex items-center text-gray-600 font-medium">
+                                                <Hourglass className="h-4 w-4 mr-2 text-gray-500" />
+                                                Task Deadline: {new Date(task.completion_time).toLocaleDateString()}
+                                            </span>
+                                        )}
+
+                                        {/* --- ACTUAL COMPLETION TIMESTAMP (Only if completed) --- */}
+                                        {task.status === 'completed' && task.completed_on && (
+                                            <span className="flex items-center text-green-700 font-medium">
+                                                <CheckIcon className="h-4 w-4 mr-2 text-green-500" />
+                                                Printed On: {new Date(task.completed_on).toLocaleDateString()}
+                                            </span>
+                                        )}
+
+                                        {/* 4. Project Target Completion Date (Dynamic Color, Only Date) */}
+                                        <span className={`flex items-center ${targetClass}`}>
+                                            <Calendar className={`h-4 w-4 mr-2 ${isTargetToday ? 'text-red-600' : 'text-gray-400'}`} />
+                                            Order Delivery Target: {task.order_completion_date ? new Date(task.order_completion_date).toLocaleDateString() : "TBD"}
+                                            {isTargetToday && <Badge variant="destructive" className="ml-2 h-4">DUE TODAY</Badge>}
+                                        </span>
+                                        
+                                        {/* 5. Assigned By */}
+                                        <span className="flex items-center">
+                                            <UserPlus className="h-4 w-4 mr-2 text-gray-400" />
+                                            Assigned By: {task.assigned_by?.staff_name || "N/A"}
+                                        </span>
+                                        
+                                        {/* 6. Assigned To */}
+                                        <span className="flex items-center">
+                                            <Printer className="h-4 w-4 mr-2 text-gray-400" />
+                                            Assigned Printer: {task.assigned_to?.staff_name || "N/A"}
+                                        </span>
+
+                                    </div>
+                                </div>
+
+                                {/* Status Editor & Actions */}
+                                <div className="w-full sm:w-auto flex flex-col items-end gap-2">
+                                
+                                    {/* Conditional Status Action Buttons */}
+                                    {task.status === 'assigned' && (
+                                        <Button 
+                                            onClick={() => handleStatusChange(task.id, 'in_progress')}
+                                            disabled={updatingTaskId === task.id}
+                                            className="w-full sm:min-w-[180px]"
+                                            variant="default" 
+                                        >
+                                            {updatingTaskId === task.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Zap className="h-4 w-4 mr-2" />}
+                                            Start Printing
+                                        </Button>
+                                    )}
+
+                                    {task.status === 'in_progress' && (
+                                        <Button 
+                                            onClick={() => handleStatusChange(task.id, 'completed')}
+                                            disabled={updatingTaskId === task.id}
+                                            className="w-full sm:min-w-[180px] bg-blue-600 hover:bg-blue-700"
+                                            variant="default"
+                                        >
+                                            {updatingTaskId === task.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                                            Finish Printing
+                                        </Button>
+                                    )}
+
+                                    {task.status === 'completed' && (
+                                        <div className="w-full sm:min-w-[180px] p-2 bg-green-50 text-green-700 rounded-md border border-green-200 text-center text-sm font-medium">
+                                            Task Finished
+                                        </div>
+                                    )}
+                                    
+                                    {/* Current Status Badge and View Order Button */}
+                                    <div className="flex justify-between items-center w-full sm:w-auto gap-2">
+                                        <Badge variant="secondary" className={`capitalize ${getTaskStatusColor(task.status)}`}>
+                                            Current: {task.status.replace(/_/g, ' ')}
+                                        </Badge>
+                                        
+                                        {/* ACTION: View Order Details Button */}
+                                        <Button 
+                                            variant="secondary" 
+                                            size="sm" 
+                                            className="h-8"
+                                            onClick={() => handleViewOrder(task.order_id)}
+                                            disabled={isOrderDetailsLoading}
+                                        >
+                                            <Eye className="h-3 w-3 mr-1" />View Order
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Removed Material, Equipment, Quality Control Tabs */}
+
+      </Tabs>
+      
+      {/* ==================================================================== */}
+      {/* MOBILE FILTER DIALOG */}
+      {/* ==================================================================== */}
+      <Dialog open={isMobileFilterOpen} onOpenChange={setIsMobileFilterOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                  <DialogTitle className="flex items-center">
+                      <Filter className="h-5 w-5 mr-2" /> Print Task Filters
+                  </DialogTitle>
+                  <DialogDescription>
+                      Apply filters to narrow down your task list.
+                  </DialogDescription>
+              </DialogHeader>
+              
+              <div className="py-4">
+                  <FilterControls 
+                      filterStatus={filterStatus}
+                      setFilterStatus={setFilterStatus}
+                      filterAssignedDateFrom={filterAssignedDateFrom}
+                      setFilterAssignedDateFrom={setFilterAssignedDateFrom}
+                      filterCompletionDateTo={filterCompletionDateTo}
+                      setFilterCompletionDateTo={setFilterCompletionDateTo}
+                      filterProjectTargetDateTo={filterProjectTargetDateTo} 
+                      setFilterProjectTargetDateTo={setFilterProjectTargetDateTo} 
+                      handleClearFilters={handleClearFilters}
+                      isFilterActive={isFilterActive}
+                      isMobile={true} 
+                  />
+              </div>
+
+              <DialogFooter>
+                  <DialogClose asChild>
+                      <Button type="button" variant="default" className="w-full">
+                          Apply & Close
+                      </Button>
+                  </DialogClose>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
+
+      {/* ==================================================================== */}
+      {/* ORDER DETAILS VIEW DIALOG */}
+      {/* ==================================================================== */}
+      <Dialog open={!!viewingOrder || isOrderDetailsLoading} onOpenChange={(open) => { 
+          if (!open) { 
+              setViewingOrder(null);
+              setIsOrderDetailsLoading(false);
+          } 
+      }}>
+          <DialogContent className="sm:max-w-[425px] md:max-w-xl flex flex-col max-h-[90vh]">
+              
+              <DialogHeader className="flex-shrink-0">
+                  <DialogTitle>Order Details #{viewingOrder?.id || '...'}</DialogTitle>
+                  <DialogDescription>
+                      Comprehensive information about the parent customer order.
+                  </DialogDescription>
+              </DialogHeader>
+              
+              {isOrderDetailsLoading && !viewingOrder ? (
+                  <div className="py-10 flex flex-col items-center flex-grow">
+                      <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                      <p className="mt-2 text-sm text-gray-500">Loading order details...</p>
                   </div>
-                  <Button variant="outline">
-                    <Filter className="h-4 w-4 mr-2" />
-                    Filter
-                  </Button>
-                </div>
-
-                <div className="space-y-4">
-                  {printQueue.map((job) => (
-                    <div key={job.id} className="border rounded-lg p-4">
-                      {/* FIX: Job header stacks on mobile */}
-                      <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-4">
-                        <div className="flex items-start space-x-4">
-                          <div className="w-12 h-12 bg-blue-100 rounded-full flex-shrink-0 flex items-center justify-center">
-                            <Printer className="h-6 w-6 text-blue-600" />
+              ) : viewingOrder && (
+                  <div className="overflow-y-auto flex-grow pr-2">
+                      <div className="grid gap-4 py-4 text-sm">
+                          
+                          {/* CUSTOMER INFO SECTION */}
+                          <div className="p-3 bg-gray-50 rounded-lg border">
+                              <h4 className="font-bold text-gray-700 mb-2">Customer Information</h4>
+                              
+                              <div className="grid grid-cols-3 items-center gap-4">
+                                  <span className="font-medium text-gray-500">Customer Name</span>
+                                  <span className="col-span-2 font-semibold text-blue-700">{viewingOrder.customer_name || 'N/A'}</span>
+                              </div>
+                              <div className="grid grid-cols-3 items-center gap-4">
+                                  <span className="font-medium text-gray-500">Mobile Number</span>
+                                  {viewingOrder.mobile_number ? (
+                                      <a href={`tel:${viewingOrder.mobile_number}`} className="col-span-2 flex items-center text-blue-600 hover:text-blue-800 transition duration-150">
+                                          <Phone className="h-3 w-3 mr-2 text-gray-400" />
+                                          {viewingOrder.mobile_number}
+                                      </a>
+                                  ) : (<span className="col-span-2 text-gray-500">N/A</span>)}
+                              </div>
+                              <div className="grid grid-cols-3 items-center gap-4">
+                                  <span className="font-medium text-gray-500">WhatsApp</span>
+                                  {viewingOrder.whatsapp_number ? (
+                                      <a href={`https://wa.me/91${viewingOrder.whatsapp_number}`} target="_blank" rel="noopener noreferrer" className="col-span-2 flex items-center text-green-600 hover:text-green-800 transition duration-150">
+                                          <MessageSquare className="h-3 w-3 mr-2 text-gray-400" />
+                                          {viewingOrder.whatsapp_number}
+                                      </a>
+                                  ) : (<span className="col-span-2 text-gray-500">N/A</span>)}
+                              </div>
                           </div>
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="font-semibold text-lg">{job.jobName}</h3>
-                              <Badge
-                                variant={job.priority === "high" ? "destructive" : "outline"}
-                                className={`text-xs ${
-                                  job.priority === "high"
-                                    ? "bg-red-100 text-red-800"
-                                    : job.priority === "medium"
-                                      ? "bg-yellow-100 text-yellow-800"
-                                      : "bg-gray-100 text-gray-800"
-                                }`}
-                              >
-                                {job.priority}
-                              </Badge>
-                            </div>
-                            <p className="text-gray-600">Order: {job.orderNumber}</p>
-                            {/* FIX: Details wrap and stack on mobile */}
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-gray-500">
-                              <span>Material: {job.material}</span>
-                              <span>Qty: {job.quantity}</span>
-                              <span>Printer: {job.printer}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="w-full sm:w-auto text-left sm:text-right">
-                          <Badge
-                            variant={job.status === "completed" ? "default" : "secondary"}
-                            className={`capitalize ${
-                              job.status === "completed"
-                                ? "bg-green-100 text-green-800"
-                                : job.status === "printing"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                            }`}
-                          >
-                            {job.status === "completed" && <CheckCircle className="h-3 w-3 mr-1" />}
-                            {job.status === "printing" && <Zap className="h-3 w-3 mr-1" />}
-                            {job.status === "queued" && <Clock className="h-3 w-3 mr-1" />}
-                            {job.status}
-                          </Badge>
-                          <p className="text-sm text-gray-500 mt-1">ETA: {job.estimatedTime}</p>
-                        </div>
-                      </div>
-
-                      {/* FIX: Progress and actions stack on mobile */}
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <div className="w-full sm:flex-1 sm:mr-4">
-                          <div className="flex items-center justify-between text-sm mb-1">
-                            <span>Progress</span>
-                            <span>{job.progress}%</span>
-                          </div>
-                          <Progress value={job.progress} className="h-2" />
-                        </div>
-                        <div className="flex w-full sm:w-auto space-x-2">
-                          {job.status === "printing" && (
-                            <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
-                              <PauseCircle className="h-3 w-3 mr-1" />
-                              Pause
-                            </Button>
+                          
+                          {/* ORDER CORE DETAILS */}
+                          <h4 className="font-bold text-gray-700 mt-2 border-t pt-3">Product & Order Details</h4>
+                          
+                          {/* Generated Order ID Display */}
+                          {viewingOrder.generated_order_id && (
+                              <div className="grid grid-cols-3 items-center gap-4">
+                                  <span className="font-medium text-gray-500">Generated ID</span>
+                                  <span className="col-span-2 font-bold text-red-600">{viewingOrder.generated_order_id}</span>
+                              </div>
                           )}
-                          {job.status === "queued" && (
-                            <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
-                              <PlayCircle className="h-3 w-3 mr-1" />
-                              Start
-                            </Button>
+
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Product Name</span>
+                              <span className="col-span-2">{viewingOrder.product_name || 'N/A'}</span>
+                          </div>
+                          
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500 flex items-center"><Package className="h-4 w-4 mr-1" /> Type</span>
+                              <span className="col-span-2 font-medium text-purple-700 capitalize">{viewingOrder.order_type?.replace(/_/g, ' ') || 'N/A'}</span>
+                          </div>
+                          
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Category</span>
+                              <span className="col-span-2">{viewingOrder.category || 'N/A'}</span>
+                          </div>
+
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Quantity</span>
+                              <span className="col-span-2">{viewingOrder.quantity || 0}</span>
+                          </div>
+
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Status</span>
+                              <Badge className={getProjectStatusColor(viewingOrder.status || 'pending')}>{viewingOrder.status || 'Pending'}</Badge>
+                          </div>
+                          
+                          {/* FINANCIAL DETAILS */}
+                          <h4 className="font-bold text-gray-700 mt-4 border-t pt-3 flex items-center"><IndianRupee className="h-4 w-4 mr-2" /> Financials</h4>
+                          
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Total Billed Amount</span>
+                              <span className="col-span-2 flex items-center text-blue-700 font-bold">
+                                  ₹ {(viewingOrder.total_amount || viewingOrder.amount)?.toLocaleString('en-IN') || '0.00'} 
+                              </span>
+                          </div>
+                          
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Amount Paid</span>
+                              <span className="col-span-2 flex items-center text-orange-700 font-medium">
+                                  ₹ {viewingOrder.amount_payed ? viewingOrder.amount_payed.toLocaleString('en-IN') : '0.00'}
+                              </span>
+                          </div>
+                          
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Payment Status</span>
+                              <span className="col-span-2">{getPaymentStatusBadge(viewingOrder.payment_status || 'pending')}</span>
+                          </div>
+                          
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500 flex items-center"><CreditCard className="h-4 w-4 mr-1" /> Payment Method</span>
+                              <span className="col-span-2 capitalize">{viewingOrder.payment_method?.replace(/_/g, ' ') || 'N/A'}</span>
+                          </div>
+
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Account Name</span>
+                              <span className="col-span-2">{viewingOrder.account_name || 'N/A'}</span>
+                          </div>
+                          
+                          {/* DATE DETAILS */}
+                          <h4 className="font-bold text-gray-700 mt-4 border-t pt-3">Timeline</h4>
+
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Start Date</span>
+                              <span className="col-span-2">{viewingOrder.start_on ? new Date(viewingOrder.start_on).toLocaleDateString() : 'N/A'}</span>
+                          </div>
+
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Completion Target</span>
+                              <span className="col-span-2 font-semibold text-red-500">{viewingOrder.completion_date ? new Date(viewingOrder.completion_date).toLocaleDateString() : 'N/A'}</span>
+                          </div>
+                          
+                          {/* DELIVERY DETAILS */}
+                          <h4 className="font-bold text-gray-700 mt-4 border-t pt-3 flex items-center"><Truck className="h-4 w-4 mr-2" /> Delivery</h4>
+
+                          <div className="grid grid-cols-3 items-center gap-4">
+                              <span className="font-medium text-gray-500">Delivery Type</span>
+                              <span className="col-span-2 capitalize">{viewingOrder.delivery_type?.replace(/_/g, ' ') || 'N/A'}</span>
+                          </div>
+
+                          {viewingOrder.delivery_type?.toLowerCase() !== 'pickup' && viewingOrder.delivery_address && (
+                              <div className="pt-2">
+                                  <p className="font-medium text-gray-500 mb-2">Delivery Address</p>
+                                  <p className="whitespace-pre-wrap bg-gray-50 p-3 rounded-lg border">{viewingOrder.delivery_address}</p>
+                              </div>
                           )}
-                          <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
-                            <Eye className="h-3 w-3 mr-1" />
-                            View
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
-          <TabsContent value="materials" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Package className="h-5 w-5 mr-2" />
-                  Material Inventory
-                </CardTitle>
-                <CardDescription>Track printing materials and supplies</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {materials.map((material, index) => (
-                    // FIX: Material items stack on mobile
-                    <div
-                      key={index}
-                      className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 border rounded-lg"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex-shrink-0 flex items-center justify-center">
-                          <Package className="h-5 w-5 text-purple-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold">{material.name}</h3>
-                          <p className="text-sm text-gray-500">
-                            Reorder at: {material.reorderLevel} {material.unit} • Cost: {material.cost}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="w-full sm:w-auto flex items-center justify-between sm:justify-end sm:space-x-4">
-                        <div className="text-right">
-                          <p className="font-semibold">
-                            {material.stock} {material.unit}
-                          </p>
-                          <Badge
-                            variant={
-                              material.status === "good"
-                                ? "default"
-                                : material.status === "low"
-                                  ? "secondary"
-                                  : "destructive"
-                            }
-                            className={`capitalize text-xs ${
-                              material.status === "good"
-                                ? "bg-green-100 text-green-800"
-                                : material.status === "low"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {material.status === "critical" && <AlertTriangle className="h-3 w-3 mr-1" />}
-                            {material.status}
-                          </Badge>
-                        </div>
-                        <Button variant="outline" size="sm">
-                          Reorder
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                          
+                          {/* DESCRIPTION */}
+                          <div className="pt-4 border-t mt-4">
+                              <p className="font-medium text-gray-500 mb-2">Description / Notes</p>
+                              <p className="whitespace-pre-wrap bg-gray-50 p-3 rounded-lg border">{viewingOrder.description || 'No description provided.'}</p>
+                          </div>
 
-          <TabsContent value="equipment" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Settings className="h-5 w-5 mr-2" />
-                  Equipment Status
-                </CardTitle>
-                <CardDescription>Monitor printing equipment and maintenance schedules</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {equipment.map((machine) => (
-                    <div key={machine.id} className="border rounded-lg p-4">
-                      {/* FIX: Equipment header stacks on mobile */}
-                      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
-                        <div className="flex items-center space-x-4">
-                          <div className="w-12 h-12 bg-gray-100 rounded-full flex-shrink-0 flex items-center justify-center">
-                            <Settings className="h-6 w-6 text-gray-600" />
+                          {/* FOOTER */}
+                          <div className="mt-4 pt-4 text-xs text-gray-500 text-right flex-shrink-0">
+                              <p>Created by: {viewingOrder.created_by_staff_name || 'Staff'} on {new Date(viewingOrder.created_on).toLocaleDateString()}</p>
                           </div>
-                          <div>
-                            <h3 className="font-semibold text-lg">{machine.name}</h3>
-                            <p className="text-gray-600">ID: {machine.id}</p>
-                            <p className="text-sm text-gray-500">Last service: {machine.lastService}</p>
-                          </div>
-                        </div>
-                        <div className="w-full sm:w-auto text-left sm:text-right">
-                          <Badge
-                            variant={
-                              machine.status === "active"
-                                ? "default"
-                                : machine.status === "idle"
-                                  ? "secondary"
-                                  : "destructive"
-                            }
-                            className={`capitalize ${
-                              machine.status === "active"
-                                ? "bg-green-100 text-green-800"
-                                : machine.status === "idle"
-                                  ? "bg-gray-100 text-gray-800"
-                                  : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {machine.status}
-                          </Badge>
-                          <p className="text-sm text-gray-500 mt-1">Utilization: {machine.utilization}%</p>
-                        </div>
                       </div>
-                      {/* FIX: Maintenance and actions stack on mobile */}
-                      <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <div className="w-full sm:flex-1 sm:mr-4">
-                          <p className="text-sm text-gray-600 mb-1">Maintenance: {machine.maintenance}</p>
-                          <Progress value={machine.utilization} className="h-2" />
-                        </div>
-                        <div className="w-full sm:w-auto flex space-x-2">
-                          <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
-                            <Eye className="h-3 w-3 mr-1" />
-                            Details
-                          </Button>
-                          <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
-                            <Settings className="h-3 w-3 mr-1" />
-                            Maintain
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="quality" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <CheckCircle className="h-5 w-5 mr-2" />
-                  Quality Control
-                </CardTitle>
-                <CardDescription>Track quality inspections and control processes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {qualityChecks.map((check) => (
-                    <div key={check.id} className="border rounded-lg p-4">
-                      {/* FIX: QC layout stacks on mobile */}
-                      <div className="flex flex-col md:flex-row items-start justify-between gap-4">
-                        <div className="flex items-center space-x-4">
-                          <div className="w-10 h-10 bg-green-100 rounded-full flex-shrink-0 flex items-center justify-center">
-                            <CheckCircle className="h-5 w-5 text-green-600" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold">{check.item}</h3>
-                            <p className="text-sm text-gray-600">Job: {check.jobId}</p>
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-gray-500">
-                              <span>Inspector: {check.inspector}</span>
-                              <span>Date: {check.date}</span>
-                              <span>Issues: {check.issues}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="w-full md:w-auto text-left md:text-right">
-                          <Badge
-                            variant={
-                              check.status === "passed"
-                                ? "default"
-                                : check.status === "failed"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                            className={`capitalize ${
-                              check.status === "passed"
-                                ? "bg-green-100 text-green-800"
-                                : check.status === "failed"
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                            }`}
-                          >
-                            {check.status === "passed" && <CheckCircle className="h-3 w-3 mr-1" />}
-                            {check.status === "failed" && <AlertTriangle className="h-3 w-3 mr-1" />}
-                            {check.status === "pending" && <Clock className="h-3 w-3 mr-1" />}
-                            {check.status}
-                          </Badge>
-                          <div className="flex justify-start md:justify-end space-x-2 mt-2">
-                            <Button variant="outline" size="sm">
-                              <Eye className="h-3 w-3 mr-1" />
-                              View
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
+                  </div>
+              )}
+          </DialogContent>
+      </Dialog>
+      
+      <Toaster />
     </DashboardLayout>
   )
 }

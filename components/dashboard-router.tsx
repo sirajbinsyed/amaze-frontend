@@ -8,6 +8,9 @@ import { ProjectDashboard } from "./dashboards/project-dashboard"
 import { DesignerDashboard } from "./dashboards/designer-dashboard"
 import { PrintingDashboard } from "./dashboards/printing-dashboard"
 import { LogisticsDashboard } from "./dashboards/logistics-dashboard"
+// --- Add new imports here ---
+import { HRDashboard } from "./dashboards/hr-dashboard"
+import { AccountantDashboard } from "./dashboards/accounts-dashboard"
 
 export function DashboardRouter() {
   const { user } = useAuth()
@@ -29,6 +32,11 @@ export function DashboardRouter() {
       return <PrintingDashboard />
     case "logistics":
       return <LogisticsDashboard />
+    // --- Add new cases here ---
+    case "hr":
+      return <HRDashboard />
+    case "accounts":
+      return <AccountantDashboard />
     default:
       return <div>Invalid user role</div>
   }

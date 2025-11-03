@@ -8,6 +8,19 @@ export interface User {
   email: string
 }
 
+// API Response types
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+}
+
+export interface ApiUser {
+  sub: string // user ID
+  role: string
+  exp: number
+  iat: number
+}
+
 // Hardcoded users as per specification
 export const DEMO_USERS: Record<string, { password: string; user: User }> = {
   admin: {
@@ -90,4 +103,21 @@ export const ROLE_PERMISSIONS = {
   designer: ["designs", "projects", "assets", "approvals"],
   printing: ["print_queue", "materials", "quality_control"],
   logistics: ["shipping", "inventory", "tracking", "delivery"],
+}
+
+// Utility function to get stored token
+export const getStoredToken = (): string | null => {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem("amaze_token")
+}
+
+// Utility function to create headers with authorization
+export const getAuthHeaders = (): Record<string, string> => {
+  const token = getStoredToken()
+  if (!token) return {}
+  
+  return {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json",
+  }
 }

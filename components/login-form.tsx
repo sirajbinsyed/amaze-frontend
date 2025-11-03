@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { Button } from "@/components/ui/button"
@@ -9,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Building2, User, Lock } from "lucide-react"
+import { User, Lock } from "lucide-react"
+import Image from "next/image" // --- Import the next/image component ---
 
 export function LoginForm() {
   const [username, setUsername] = useState("")
@@ -23,35 +23,32 @@ export function LoginForm() {
     setError("")
     setIsLoading(true)
 
-    const success = await login(username, password)
+    try {
+      const success = await login(username, password)
 
-    if (!success) {
-      setError("Invalid username or password")
+      if (!success) {
+        setError("Invalid username or password. Please check your credentials and try again.")
+      }
+    } catch (error) {
+      setError("Unable to connect to the server. Please check your connection and try again.")
     }
 
     setIsLoading(false)
   }
 
-  const demoCredentials = [
-    { role: "Admin", username: "admin", password: "admin123" },
-    { role: "CRM", username: "crm_user", password: "crm123" },
-    { role: "Sales", username: "sales_user", password: "sales123" },
-    { role: "Project", username: "project_user", password: "project123" },
-    { role: "Designer", username: "designer", password: "design123" },
-    { role: "Printing", username: "printing_user", password: "print123" },
-    { role: "Logistics", username: "logistics_user", password: "logistics123" },
-  ]
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="bg-blue-600 p-3 rounded-full">
-              <Building2 className="h-8 w-8 text-white" />
-            </div>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900">Amaze Framing Shop</h1>
+          
+          {/* --- Replaced icon and h1 with the Image component --- */}
+          <Image
+            src="/amaze logo.png" // Path from the 'public' directory
+            alt="Amaze Framing Shop Logo"
+            width={250} // Adjust width as needed for your logo
+            height={67}  // Adjust height for aspect ratio
+            className="mx-auto mb-4 object-contain" // Center the image and add margin
+          />
           <p className="text-gray-600 mt-2">Enterprise Resource Planning System</p>
         </div>
 
@@ -104,24 +101,6 @@ export function LoginForm() {
                 {isLoading ? "Signing in..." : "Sign In"}
               </Button>
             </form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Demo Credentials</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-2 text-xs">
-              {demoCredentials.map((cred) => (
-                <div key={cred.username} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <span className="font-medium">{cred.role}:</span>
-                  <span className="text-gray-600">
-                    {cred.username} / {cred.password}
-                  </span>
-                </div>
-              ))}
-            </div>
           </CardContent>
         </Card>
       </div>
