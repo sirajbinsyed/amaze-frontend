@@ -60,7 +60,7 @@ interface OrdersTabProps {
 }
 
 // -------------------------------------------------------------
-// Image Manager Component (API Integration) - UPDATED
+// Image Manager Component (API Integration) - (Unchanged)
 // -------------------------------------------------------------
 
 interface ImageManagerProps {
@@ -259,7 +259,7 @@ const OrderImageManagerDialog: React.FC<ImageManagerProps> = ({ order, onClose }
 
 
 // -------------------------------------------------------------
-// Main OrdersTab Component (Unchanged logic, updated button)
+// Main OrdersTab Component - UPDATED
 // -------------------------------------------------------------
 
 export const OrdersTab: React.FC<OrdersTabProps> = ({
@@ -454,8 +454,36 @@ export const OrdersTab: React.FC<OrdersTabProps> = ({
                                                             <ImageIcon className="h-3 w-3 mr-1" />Images
                                                         </Button>
 
-                                                        <Button variant="outline" size="sm" onClick={() => handleEditOrder(order)}><Edit className="h-3 w-3 mr-1" />Edit</Button>
-                                                        
+                                                        {/* --- MODIFICATION START --- */}
+                                                        {/* Conditionally render the Edit button or the disabled-state dialog trigger */}
+                                                        {order.status === 'pending' ? (
+                                                            <Button variant="outline" size="sm" onClick={() => handleEditOrder(order)}>
+                                                                <Edit className="h-3 w-3 mr-1" />Edit
+                                                            </Button>
+                                                        ) : (
+                                                            <AlertDialog>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <Button variant="outline" size="sm" className="opacity-60 cursor-not-allowed">
+                                                                        <Edit className="h-3 w-3 mr-1" />Edit
+                                                                    </Button>
+                                                                </AlertDialogTrigger>
+                                                                <AlertDialogContent>
+                                                                    <AlertDialogHeader>
+                                                                        <AlertDialogTitle>Cannot Edit Order</AlertDialogTitle>
+                                                                        <AlertDialogDescription>
+                                                                            This order's status is "{order.status}". You can only edit orders that are 'pending'.
+                                                                            <br /><br />
+                                                                            To make changes, please request the project manager to change its status back to 'pending'.
+                                                                        </AlertDialogDescription>
+                                                                    </AlertDialogHeader>
+                                                                    <AlertDialogFooter>
+                                                                        <AlertDialogCancel>OK</AlertDialogCancel>
+                                                                    </AlertDialogFooter>
+                                                                </AlertDialogContent>
+                                                            </AlertDialog>
+                                                        )}
+                                                        {/* --- MODIFICATION END --- */}
+
                                                         <AlertDialog>
                                                             <AlertDialogTrigger asChild>
                                                                 <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700"><Trash2 className="h-3 w-3 mr-1" />Delete</Button>
