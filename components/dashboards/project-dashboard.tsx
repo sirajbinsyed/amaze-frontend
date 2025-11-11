@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { DashboardLayout } from "../dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,8 +25,8 @@ import {
   type Staff,
   type DetailedTask,
   type OrderById,
-  type OrderImage, // <-- USING THE IMPORTED TYPE
-  getOrderImages // <-- USING THE IMPORTED FUNCTION
+  type OrderImage, 
+  getOrderImages 
 } from "@/lib/project"
 import { AssignTaskForm } from "@/components/assign-task-form"
 import { EditTaskForm } from "@/components/edit-task-form"
@@ -59,23 +59,14 @@ import {
   Loader2,        
   Repeat2, 
   ChevronDown,
-  Image as ImageIcon, // Imported for the image button
+  Image as ImageIcon,
 } from "lucide-react"
 
-// Since the provided interfaces already include generated_order_id, 
-// we can use the base Order type if we ensure the API client returns it, 
-// but using the extended type ensures clarity if Order interface definition is external.
 type OrderWithGeneratedId = Order & { generated_order_id?: string | null };
 
 
 // =============================================================
-// 1. IMAGE MANAGEMENT (MOCK CODE REMOVED)
-// =============================================================
-// We now rely entirely on the imported OrderImage type and getOrderImages function.
-
-
-// =============================================================
-// 2. IMAGE MANAGER DIALOG (View/Download Only, Now using API)
+// 1. IMAGE MANAGER DIALOG 
 // =============================================================
 
 interface ProjectImageManagerProps {
@@ -95,7 +86,6 @@ const ProjectImageManagerDialog: React.FC<ProjectImageManagerProps> = ({ order, 
         setIsLoading(true);
         setError('');
         try {
-            // *** API INTEGRATION HERE ***
             const fetchedImages = await getOrderImages(orderId); 
             setImages(fetchedImages);
         } catch (err) {
@@ -179,7 +169,6 @@ const ProjectImageManagerDialog: React.FC<ProjectImageManagerProps> = ({ order, 
                                         </div>
                                     </div>
                                     <div className="p-3 text-sm">
-                                        {/* Note: OrderImage.description is optional, so we handle null */}
                                         <p className="font-medium truncate">{img.description || `Image ${img.id}`}</p>
                                         <p className="text-xs text-gray-500 mt-1">Uploaded: {new Date(img.created_at).toLocaleDateString()}</p>
                                     </div>
@@ -238,7 +227,6 @@ export function ProjectDashboard() {
   const [orderStatusFilter, setOrderStatusFilter] = useState("all")
   const [orderFromDate, setOrderFromDate] = useState("")
   const [orderToDate, setOrderToDate] = useState("")
-  // Mobile filter state for projects
   const [isOrderFilterOpen, setIsOrderFilterOpen] = useState(false); 
 
   // --- Filter States (Tasks) ---
@@ -247,7 +235,6 @@ export function ProjectDashboard() {
   const [taskStatusFilter, setTaskStatusFilter] = useState("all");
   const [taskFromDate, setTaskFromDate] = useState("");
   const [taskToDate, setTaskToDate] = useState("");
-  // Mobile filter state for tasks
   const [isTaskFilterOpen, setIsTaskFilterOpen] = useState(false); 
 
   // --- Task/Assignment Modals ---
@@ -270,8 +257,18 @@ export function ProjectDashboard() {
   const [selectedProjectForStatusUpdate, setSelectedProjectForStatusUpdate] = useState<OrderWithGeneratedId | null>(null)
   const [newStatus, setNewStatus] = useState<string>('')
   const [isStatusUpdating, setIsStatusUpdating] = useState(false)
-  // New state for handling the required ID input
   const [generatedOrderIdInput, setGeneratedOrderIdInput] = useState<string>('') 
+
+
+  // --- PROJECT LOOKUP MAP (NEW) ---
+  const projectLookup = useMemo(() => {
+    return projects.reduce((acc, project) => {
+        if (project.id) { 
+            acc[project.id] = project;
+        }
+        return acc;
+    }, {} as Record<number, OrderWithGeneratedId>);
+  }, [projects]);
 
 
   // --- Data Fetching Effect ---
@@ -311,7 +308,7 @@ export function ProjectDashboard() {
     if(tasksResponse.data) setTasks(tasksResponse.data);
   }
 
-  // --- Modal Handlers (Task Edit Success Handler needs update for task list filtering) ---
+  // --- Modal Handlers ---
   const handleOpenAssignModal = (project: Order) => {
     setSelectedProject(project)
     setIsAssignModalOpen(true)
@@ -333,7 +330,6 @@ export function ProjectDashboard() {
     setSelectedTaskForEdit(null)
     reloadData() // Reload tasks to see the update
     
-    // If we are currently viewing order tasks, re-fetch them as well
     if (viewingOrder?.id) {
         handleViewProject({ id: viewingOrder.id } as Order);
     }
@@ -348,13 +344,12 @@ export function ProjectDashboard() {
   // 3. UPDATED handleViewProject to fetch tasks
   const handleViewProject = async (project: Order) => {
     setViewingOrder(null);
-    setViewingOrderTasks([]); // Clear previous tasks
+    setViewingOrderTasks([]); 
     setIsOrderDetailsLoading(true);
     setIsViewingOrderTasksLoading(true);
     
     const orderId = project.id;
 
-    // Fetch both order details and associated tasks concurrently
     const [orderResponse, tasksResponse] = await Promise.all([
         getOrder(orderId), 
         getTasksByOrder(orderId) 
@@ -391,7 +386,6 @@ export function ProjectDashboard() {
   const handleOpenStatusUpdateModal = (project: OrderWithGeneratedId) => {
     setSelectedProjectForStatusUpdate(project);
     setNewStatus(project.status || 'pending');
-    // Initialize input field with existing ID, if present
     setGeneratedOrderIdInput(project.generated_order_id || ''); 
     setIsStatusUpdateModalOpen(true);
   }
@@ -399,7 +393,6 @@ export function ProjectDashboard() {
   const handleStatusUpdate = async () => {
     if (!selectedProjectForStatusUpdate || !newStatus) return;
 
-    // 1. Check if moving to 'in_progress' and lacking a generated ID
     const isStartingInProgress = 
         newStatus === 'in_progress' && 
         !selectedProjectForStatusUpdate.generated_order_id;
@@ -434,8 +427,6 @@ export function ProjectDashboard() {
         payload.generated_order_id = generatedOrderIdInput.trim();
     }
     
-    // If moving AWAY from in_progress, we do NOT change the ID field, just the status.
-    
     const response = await updateOrder(projectId, payload); 
 
     if (response.error) {
@@ -451,7 +442,7 @@ export function ProjectDashboard() {
         });
         setIsStatusUpdateModalOpen(false);
         setSelectedProjectForStatusUpdate(null);
-        setGeneratedOrderIdInput(''); // Clear local state after success
+        setGeneratedOrderIdInput('');
         reloadData(); 
     }
     setIsStatusUpdating(false);
@@ -480,6 +471,7 @@ export function ProjectDashboard() {
     const matchesSearch = 
         (project.description?.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
         project.product_name?.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
+        project.customer_name?.toLowerCase().includes(orderSearchTerm.toLowerCase()) || 
         project.id?.toString().includes(orderSearchTerm) ||
         project.generated_order_id?.toLowerCase().includes(orderSearchTerm.toLowerCase()));
 
@@ -510,14 +502,12 @@ export function ProjectDashboard() {
             }
             if (orderToDate) {
                 const toDate = new Date(orderToDate);
-                // Add one day to include the end date fully
                 toDate.setDate(toDate.getDate() + 1); 
                 const toDateTime = toDate.getTime();
                 matchesDate = matchesDate && projectCompletionDate < toDateTime;
             }
         }
     }
-    // ----------------------------------------------------
 
     return matchesSearch && matchesStatus && matchesStaff && matchesDate;
   })
@@ -528,6 +518,7 @@ export function ProjectDashboard() {
     const matchesSearch =
         (task.task_description?.toLowerCase().includes(taskSearchTerm.toLowerCase()) ||
         task.assigned_to?.staff_name?.toLowerCase().includes(taskSearchTerm.toLowerCase()) ||
+        projectLookup[task.order_id]?.customer_name?.toLowerCase().includes(taskSearchTerm.toLowerCase()) || // Search by Customer Name
         task.order_id?.toString().includes(taskSearchTerm));
 
     // 2. Status Filter
@@ -550,7 +541,6 @@ export function ProjectDashboard() {
 
     if (hasDateFilters) {
         if (taskCompletionTime === null) {
-            // Task must have a completion time if date filters are active
             matchesDate = false;
         } else {
             if (taskFromDate) {
@@ -559,7 +549,6 @@ export function ProjectDashboard() {
             }
             if (taskToDate) {
                 const toDate = new Date(taskToDate);
-                // Add one day to include the end date fully
                 toDate.setDate(toDate.getDate() + 1);
                 const toDateTime = toDate.getTime();
                 matchesDate = matchesDate && taskCompletionTime < toDateTime;
@@ -791,17 +780,13 @@ export function ProjectDashboard() {
                     ) : (
                         filteredProjects.map((project) => {
                             
-                            // Format data for display
                             const totalAmountDisplay = (project.total_amount || project.amount)?.toLocaleString() || 'N/A';
                             const completionDateDisplay = project.completion_date 
                                 ? new Date(project.completion_date).toLocaleDateString()
                                 : 'N/A';
                             
-                            const isCompleted = project.status?.toLowerCase() === 'completed';
-                            // Check: Only allow assignment if the project is in progress
                             const isInProgress = project.status?.toLowerCase() === 'in_progress';
 
-                            // Display Generated ID if available (Requirement 1)
                             const generatedIdDisplay = project.generated_order_id 
                                 ? <Badge variant="secondary" className="bg-purple-100 text-purple-700 font-semibold text-xs">{project.generated_order_id}</Badge>
                                 : null;
@@ -817,10 +802,12 @@ export function ProjectDashboard() {
                                                 <FolderOpen className="h-6 w-6 text-blue-600" />
                                             </div>
                                             <div>
-                                                <h3 className="font-semibold text-lg">{project.description || `Project PRJ-${project.id}`}</h3>
-                                                <div className="flex items-center space-x-2">
-                                                    <p className="text-gray-600">Order ID: #{project.id}</p>
-                                                    {generatedIdDisplay} {/* Display Generated ID in the list */}
+                                                <h3 className="font-bold text-xl text-blue-700">
+                                                    {project.customer_name || `Customer N/A`}
+                                                </h3> 
+                                                <div className="flex items-center space-x-2 mt-1">
+                                                    <p className="text-gray-600 text-sm font-medium">Order ID: PRJ-{project.id}</p>
+                                                    {generatedIdDisplay}
                                                 </div>
                                                 <div className="text-xs text-gray-500 mt-1 space-y-1">
                                                     <p>Created by {project.created_by_staff_name || 'Staff'} on {new Date(project.created_on).toLocaleDateString()}</p>
@@ -922,7 +909,7 @@ export function ProjectDashboard() {
             </Card>
           </TabsContent>
 
-          {/* TASKS TAB (Updated with Filters) */}
+          {/* TASKS TAB (Updated to highlight Customer Name) */}
           <TabsContent value="tasks" className="space-y-6">
             <Card>
               <CardHeader>
@@ -977,88 +964,98 @@ export function ProjectDashboard() {
                             </p>
                         </div>
                     ) : (
-                        filteredTasks.map((task) => (
-                        <div key={task.id} className="border rounded-lg p-4">
-                            <div className="flex flex-col md:flex-row items-start justify-between gap-4">
-                                <div className="flex items-start space-x-4 flex-1">
-                                    <div className="w-10 h-10 bg-blue-100 rounded-full flex-shrink-0 flex items-center justify-center">
-                                        <CheckSquare className="h-5 w-5 text-blue-600" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <h3 className="font-semibold">{task.task_description || "Untitled Task"}</h3>
-                                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm text-gray-600">
-                                            <div className="flex items-center">
-                                                <User className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
-                                                <div>
-                                                    <span className="font-medium text-gray-800">Assigned To:</span>{' '}
-                                                    {task.assigned_to?.staff_name ? (
-                                                        <>{task.assigned_to.staff_name}{task.assigned_to.role && <span className="text-gray-500"> ({task.assigned_to.role})</span>}</>
-                                                    ) : (<span className="italic">Not Assigned</span>)}
-                                                </div>
+                        filteredTasks.map((task) => {
+                            // Fetch Customer Name from the lookup map
+                            const associatedProject = projectLookup[task.order_id];
+                            const customerName = associatedProject?.customer_name || `Order PRJ-${task.order_id}`;
+                            
+                            return (
+                                <div key={task.id} className="border rounded-lg p-4">
+                                    <div className="flex flex-col md:flex-row items-start justify-between gap-4">
+                                        <div className="flex items-start space-x-4 flex-1">
+                                            <div className="w-10 h-10 bg-blue-100 rounded-full flex-shrink-0 flex items-center justify-center">
+                                                <CheckSquare className="h-5 w-5 text-blue-600" />
                                             </div>
-                                            <div className="flex items-center">
-                                                <UserPlus className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
-                                                <div>
-                                                    <span className="font-medium text-gray-800">Assigned By:</span>{' '}
-                                                    {task.assigned_by?.staff_name ? (
-                                                        <>{task.assigned_by.staff_name}{task.assigned_by.role && <span className="text-gray-500"> ({task.assigned_by.role})</span>}</>
-                                                    ) : (<span className="italic">System/Unknown</span>)}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center">
-                                                <Calendar className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
-                                                <div>
-                                                    <span className="font-medium text-gray-800">Due Date:</span>{' '}
-                                                    {task.completion_time ? new Date(task.completion_time).toLocaleDateString() : "TBD"}
-                                                </div>
-                                            </div>
-                                            {task.updated_by?.staff_name && (
-                                                <div className="flex items-center">
-                                                    <Edit className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
-                                                    <div>
-                                                        <span className="font-medium text-gray-800">Updated By:</span>{' '}
-                                                        {task.updated_by.staff_name}
-                                                        {task.updated_by.role && <span className="text-gray-500"> ({task.updated_by.role})</span>}
+                                            <div className="flex-1">
+                                                {/* MODIFICATION: Highlight Customer Name */}
+                                                <h3 className="font-bold text-lg text-purple-700">
+                                                    {customerName}
+                                                </h3>
+                                                {/* Task Description is secondary */}
+                                                <p className="font-medium text-gray-700 mt-1">
+                                                    Task: {task.task_description || "Untitled Task"}
+                                                </p>
+                                                
+                                                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm text-gray-600">
+                                                    <div className="flex items-center">
+                                                        <User className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                                                        <div>
+                                                            <span className="font-medium text-gray-800">Assigned To:</span>{' '}
+                                                            {task.assigned_to?.staff_name ? (
+                                                                <>{task.assigned_to.staff_name}{task.assigned_to.role && <span className="text-gray-500"> ({task.assigned_to.role})</span>}</>
+                                                            ) : (<span className="italic">Not Assigned</span>)}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center">
+                                                        <UserPlus className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                                                        <div>
+                                                            <span className="font-medium text-gray-800">Assigned By:</span>{' '}
+                                                            {task.assigned_by?.staff_name ? (
+                                                                <>{task.assigned_by.staff_name}{task.assigned_by.role && <span className="text-gray-500"> ({task.assigned_by.role})</span>}</>
+                                                            ) : (<span className="italic">System/Unknown</span>)}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center">
+                                                        <Calendar className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                                                        <div>
+                                                            <span className="font-medium text-gray-800">Due Date:</span>{' '}
+                                                            {task.completion_time ? new Date(task.completion_time).toLocaleDateString() : "TBD"}
+                                                        </div>
+                                                    </div>
+                                                    {task.updated_by?.staff_name && (
+                                                        <div className="flex items-center">
+                                                            <Edit className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                                                            <div>
+                                                                <span className="font-medium text-gray-800">Updated By:</span>{' '}
+                                                                {task.updated_by.staff_name}
+                                                                {task.updated_by.role && <span className="text-gray-500"> ({task.updated_by.role})</span>}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex items-center">
+                                                        <FolderOpen className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                                                        <div>
+                                                            <span className="font-medium text-gray-800">Project:</span>{' '}
+                                                            PRJ-{task.order_id}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            )}
-                                            <div className="flex items-center">
-                                                <FolderOpen className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
-                                                <div>
-                                                    <span className="font-medium text-gray-800">Project:</span>{' '}
-                                                    PRJ-{task.order_id}
-                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="w-full md:w-auto text-left md:text-right">
+                                            <Badge variant="secondary" className={`capitalize ${getTaskStatusColor(task.status)}`}>{task.status}</Badge>
+                                            <div className="flex justify-start md:justify-end space-x-2 mt-2">
+                                                <Button 
+                                                    variant="outline" 
+                                                    size="sm"
+                                                    onClick={() => handleOpenEditModal(task)}
+                                                >
+                                                    <Edit className="h-3 w-3 mr-1" />Edit
+                                                </Button>
+                                                
+                                                <Button 
+                                                    variant="secondary" 
+                                                    size="sm"
+                                                    onClick={() => handleViewProject({ id: task.order_id } as Order)}
+                                                >
+                                                    <Eye className="h-3 w-3 mr-1" />View Order
+                                                </Button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="w-full md:w-auto text-left md:text-right">
-                                    <Badge variant="secondary" className={`capitalize ${getTaskStatusColor(task.status)}`}>{task.status}</Badge>
-                                    <div className="flex justify-start md:justify-end space-x-2 mt-2">
-                                        <Button 
-                                            variant="outline" 
-                                            size="sm"
-                                            onClick={() => handleOpenEditModal(task)}
-                                        >
-                                            <Edit className="h-3 w-3 mr-1" />Edit
-                                        </Button>
-                                        
-                                        {/* NEW: View Order Details Button */}
-                                        <Button 
-                                            variant="secondary" 
-                                            size="sm"
-                                            // Pass a partial Order object containing just the ID
-                                            onClick={() => handleViewProject({ id: task.order_id } as Order)}
-                                        >
-                                            <Eye className="h-3 w-3 mr-1" />View Order
-                                        </Button>
-                                        {/* END NEW */}
-
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        ))
+                            )
+                        })
                     )}
                     </div>
                 )}
@@ -1067,7 +1064,7 @@ export function ProjectDashboard() {
           </TabsContent>
 
 
-          {/* TIMELINE, RESOURCES, REPORTS tabs (omitted for brevity) */}
+          {/* TIMELINE, RESOURCES, REPORTS tabs */}
           <TabsContent value="timeline" className="space-y-6">
              <Card>
               <CardHeader>
@@ -1327,7 +1324,7 @@ export function ProjectDashboard() {
                           {/* ORDER CORE DETAILS */}
                           <h4 className="font-bold text-gray-700 mt-2 border-t pt-3">Product & Order Details</h4>
                           
-                          {/* Generated Order ID Display (Requirement 2) */}
+                          {/* Generated Order ID Display */}
                           {viewingOrder.generated_order_id && (
                               <div className="grid grid-cols-3 items-center gap-4">
                                   <span className="font-medium text-gray-500">Generated ID</span>
@@ -1422,7 +1419,7 @@ export function ProjectDashboard() {
                               <span className="col-span-2">{viewingOrder.completed_on ? new Date(viewingOrder.completed_on).toLocaleDateString() : 'N/A'}</span>
                           </div>
                           
-                          {/* DELIVERY DETAILS - UPDATED WITH PICKUP CONDITION */}
+                          {/* DELIVERY DETAILS */}
                           <h4 className="font-bold text-gray-700 mt-4 border-t pt-3 flex items-center"><Truck className="h-4 w-4 mr-2" /> Delivery</h4>
 
                           <div className="grid grid-cols-3 items-center gap-4">
@@ -1474,7 +1471,7 @@ export function ProjectDashboard() {
                                              <Button 
                                                 variant="outline" 
                                                 size="sm" 
-                                                className="h-7 px-2 text-xs" // Manual sizing for smaller button
+                                                className="h-7 px-2 text-xs"
                                                 onClick={() => handleOpenEditModal(task)}
                                             >
                                                 <Edit className="h-3 w-3 mr-1" />Edit Task
