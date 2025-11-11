@@ -19,7 +19,8 @@ import {
   Globe, 
   MapPin,
   Tag,
-  FileText as ProductIcon
+  FileText as ProductIcon,
+  CheckCircle,
 } from "lucide-react"
 import { type Order, type CreateOrderRequest, type UpdateOrderRequest, type Customer } from "@/lib/api"
 
@@ -131,7 +132,7 @@ export function OrderForm({ isOpen, onClose, onSuccess, order, mode, customer }:
           project_commit: '',
           start_on: '',
           completion_date: '',
-          status: 'pending',
+          status: 'pending', // Default status for creation
           amount: 0,
           description: '',
           order_type: '',
@@ -224,29 +225,23 @@ export function OrderForm({ isOpen, onClose, onSuccess, order, mode, customer }:
     }
   }
 
-  // === UPDATED CATEGORY OPTIONS ===
+  // === UI Options Definitions ===
   const categoryOptions = [
     { value: 'crystal_wall_art', label: 'Crystal Wall Art' },
     { value: 'amaze_ads', label: 'Amaze Ads' },
     { value: 'crystal_glass_art', label: 'Crystal Glass Art' },
     { value: 'sign_board_amaze', label: 'Sign Board Amaze' },
   ]
-
-  // Order Type options
   const orderTypeOptions = [
     { value: 'online', label: 'Online Order', icon: <Globe className="h-4 w-4" /> },
     { value: 'offline', label: 'Offline/Physical Order', icon: <MapPin className="h-4 w-4" /> },
   ]
-
-  // Payment Status options
   const paymentStatusOptions = [
     { value: 'pending', label: 'Pending Payment', color: 'text-yellow-600 bg-yellow-50' },
     { value: 'partial', label: 'Partial Payment', color: 'text-orange-600 bg-orange-50' },
     { value: 'completed', label: 'Payment Completed', color: 'text-green-600 bg-green-50' },
     { value: 'overdue', label: 'Overdue', color: 'text-red-600 bg-red-50' },
   ]
-
-  // Payment Method options
   const paymentMethodOptions = [
     { value: 'cash', label: 'Cash', icon: '💰' },
     { value: 'card', label: 'Credit/Debit Card', icon: '💳' },
@@ -254,8 +249,6 @@ export function OrderForm({ isOpen, onClose, onSuccess, order, mode, customer }:
     { value: 'bank_transfer', label: 'Bank Transfer', icon: '🏦' },
     { value: 'cheque', label: 'Cheque', icon: '📄' },
   ]
-
-  // === UPDATED DELIVERY TYPE OPTIONS ===
   const deliveryTypeOptions = [
     { value: 'pickup', label: 'Customer Pickup', icon: '👤' },
     { value: 'self_install', label: 'Self Installation', icon: '🔧' },
@@ -265,24 +258,7 @@ export function OrderForm({ isOpen, onClose, onSuccess, order, mode, customer }:
     { value: 'ksrtc', label: 'KSRTC', icon: '🚌' },
     { value: 'other', label: 'Other', icon: '✨' },
   ]
-
-  // === UPDATED LOGIC HELPER: Array of delivery types that require an address field ===
   const deliveryRequiresAddress = ['post_office', 'dtdc', 'speed_safe_dtdc', 'ksrtc', 'other']
-
-  // Order Status options
-  const allStatusOptions = [
-    { value: 'pending', label: 'Pending', color: 'text-yellow-600' },
-    { value: 'confirmed', label: 'Confirmed', color: 'text-blue-600' },
-    { value: 'in_progress', label: 'In Progress', color: 'text-orange-600' },
-    { value: 'completed', label: 'Completed', color: 'text-green-600' },
-    { value: 'cancelled', label: 'Cancelled', color: 'text-red-600' },
-  ]
-
-  const statusOptions =
-    mode === 'create'
-      ? allStatusOptions.filter(opt => ['pending', 'confirmed'].includes(opt.value))
-      : allStatusOptions
-
   const accountNameOptions = [
     { value: 'iob', label: 'IOB' },
     { value: 'anil', label: 'Anil' },
@@ -293,6 +269,30 @@ export function OrderForm({ isOpen, onClose, onSuccess, order, mode, customer }:
     { value: 'cash', label: 'Cash' },
     { value: 'cd', label: 'CD' },
   ]
+
+  // Full status list (used internally for finding the correct object)
+  const allStatusOptions = [
+      { value: 'pending', label: 'Pending', color: 'text-yellow-600' },
+      { value: 'confirmed', label: 'Confirmed', color: 'text-blue-600' },
+      { value: 'in_progress', label: 'In Progress', color: 'text-orange-600' },
+      { value: 'completed', label: 'Completed', color: 'text-green-600' },
+      { value: 'cancelled', label: 'Cancelled', color: 'text-red-600' },
+  ]
+
+  // --- MODIFIED STATUS LOGIC: Pending and Confirmed only ---
+  const restrictedValues = ['pending', 'confirmed'];
+  let statusOptions = allStatusOptions.filter(opt => restrictedValues.includes(opt.value));
+
+  if (mode === 'edit' && order && !restrictedValues.includes(order.status)) {
+      // If editing an order that is already in an advanced status (e.g., 'completed'), 
+      // include that status object so the current value is displayed correctly in the Select input.
+      const currentStatusObject = allStatusOptions.find(opt => opt.value === order.status);
+      if (currentStatusObject) {
+          // Prepend the current advanced status
+          statusOptions = [currentStatusObject, ...statusOptions];
+      }
+  }
+  statusOptions = statusOptions.filter((v, i, a) => a.findIndex(t => (t.value === v.value)) === i); // Deduplicate
 
   // Validation check
   const isFormValid = formData.customer_id > 0 && 
@@ -492,28 +492,6 @@ export function OrderForm({ isOpen, onClose, onSuccess, order, mode, customer }:
                 />
               </div>
             </div>
-
-            <div className="mt-4 pt-4 border-t border-green-200">
-              <div className="space-y-2">
-                <Label htmlFor="status">Order Status *</Label>
-                <Select 
-                  value={formData.status || ''} 
-                  onValueChange={(value) => handleInputChange('status', value)}
-                  required
-                >
-                  <SelectTrigger className="pr-10">
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {statusOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <span className={option.color}>{option.label}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
           </div>
 
           {/* Payment Information Section */}
@@ -687,7 +665,7 @@ export function OrderForm({ isOpen, onClose, onSuccess, order, mode, customer }:
               </Select>
             </div>
 
-            {/* === UPDATED CONDITIONAL RENDERING FOR ADDRESS === */}
+            {/* Conditional Rendering for Address */}
             {deliveryRequiresAddress.includes(formData.delivery_type || '') && (
               <div className="space-y-2">
                 <Label htmlFor="delivery_address" className="flex items-center">
@@ -705,6 +683,36 @@ export function OrderForm({ isOpen, onClose, onSuccess, order, mode, customer }:
               </div>
             )}
           </div>
+          
+          {/* === HIGHLIGHTED ORDER STATUS FIELD (MOVED TO THE END) === */}
+          <div className="p-4 bg-blue-50/70 border border-blue-400 rounded-lg shadow-md mt-6">
+            <div className="space-y-2">
+              <Label htmlFor="status" className="flex items-center text-lg font-semibold text-blue-800">
+                <CheckCircle className="h-5 w-5 mr-2" />
+                Order Status *
+                <span className="ml-3 text-sm font-normal text-blue-600">
+                   
+                </span>
+              </Label>
+              <Select 
+                value={formData.status || ''} 
+                onValueChange={(value) => handleInputChange('status', value)}
+                required
+              >
+                <SelectTrigger className="pr-10 h-11 border-blue-500 bg-white">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <span className={option.color}>{option.label}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {/* === END OF HIGHLIGHTED ORDER STATUS FIELD === */}
 
           {/* Description Section */}
           <div className="space-y-2">
