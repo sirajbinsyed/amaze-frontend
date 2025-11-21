@@ -609,6 +609,17 @@ export async function assignTask(payload: AssignTaskPayload): Promise<ApiRespons
   role: string | null;
 }
 
+export interface CustomerInfo {
+  id: number | null;
+  name: string | null;
+}
+
+// 👇 New interface for order details
+export interface OrderInfo {
+  id: number | null;
+  generated_order_id: string | null;
+  product_name: string | null;
+}
  export interface DetailedTask {
   id: number;
   order_id: number;
@@ -616,11 +627,16 @@ export async function assignTask(payload: AssignTaskPayload): Promise<ApiRespons
   status: string;
   assigned_on: string;
   completion_time: string | null;
+  completed_on: string | null; // ADDED: New field for completion date
   assigned_by: TaskStaffInfo;
   assigned_to: TaskStaffInfo;
-  updated_by: TaskStaffInfo | null;
-}
 
+  updated_by: TaskStaffInfo | null;
+  order_completion_date?: string | null;
+  // 👇 NEW: customer info included in detailed task view
+  customer?: CustomerInfo | null;
+  order?: OrderInfo | null;
+}
 /**
  * Fetches all tasks with detailed, nested information about the staff involved.
  * Corresponds to: GET /tasks

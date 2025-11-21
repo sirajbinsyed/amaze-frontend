@@ -60,7 +60,7 @@ interface OrdersTabProps {
 }
 
 // -------------------------------------------------------------
-// Image Manager Component (API Integration) - UPDATED
+// Image Manager Component (API Integration)
 // -------------------------------------------------------------
 
 interface ImageManagerProps {
@@ -136,8 +136,6 @@ const OrderImageManagerDialog: React.FC<ImageManagerProps> = ({ order, onClose }
         try {
             // INTEGRATED API CALL (MODIFIED)
             // We now pass both the database ID and the Cloudinary public_id.
-            // Your backend API should handle the logic for calling Cloudinary's API
-            // to delete the asset, then delete the record from your database.
             await deleteOrderImage(imageToDelete.id, imageToDelete.public_id); 
             
             setImages(prev => prev.filter(img => img.id !== imageToDelete.id));
@@ -259,7 +257,7 @@ const OrderImageManagerDialog: React.FC<ImageManagerProps> = ({ order, onClose }
 
 
 // -------------------------------------------------------------
-// Main OrdersTab Component (Unchanged logic, updated button)
+// Main OrdersTab Component - UPDATED
 // -------------------------------------------------------------
 
 export const OrdersTab: React.FC<OrdersTabProps> = ({
@@ -292,7 +290,9 @@ export const OrdersTab: React.FC<OrdersTabProps> = ({
         setSelectedOrderForImages(order);
     };
 
+    // Combine customers for lookup
     const allKnownCustomers: (Customer | RealCustomer)[] = [...customers, ...realCustomers];
+    
     const FilterControls = ({ className = "" }: { className?: string }) => (
         <div className={className}>
             {/* STAFF FILTER */}
@@ -405,12 +405,27 @@ export const OrdersTab: React.FC<OrdersTabProps> = ({
                                         <div key={order.id} className="border rounded-lg p-4 transition-shadow hover:shadow-md bg-white">
                                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                                 
-                                                {/* LEFT SIDE: Order ID, Customer, and Staff Info */}
+                                                {/* LEFT SIDE: Customer Name and Order ID Info (UPDATED SECTION) */}
                                                 <div className="flex items-center space-x-4">
                                                     <div className="w-12 h-12 bg-green-100 rounded-full flex-shrink-0 flex items-center justify-center"><ShoppingCart className="h-6 w-6 text-green-600" /></div>
                                                     <div>
-                                                        <h3 className="font-semibold text-lg">Order #{order.id}</h3>
-                                                        <p className="text-gray-600">{customer?.customer_name || 'Unknown Customer'}</p>
+                                                        {/* Highlighted: Customer Name */}
+                                                        <h3 className="font-bold text-lg text-gray-900">
+                                                            {customer?.customer_name || 'Unknown Customer'}
+                                                        </h3>
+                                                        
+                                                        {/* Smaller Order ID and Generated ID */}
+                                                        <p className="text-sm text-gray-600 mt-0.5">
+                                                            Order ID: <span className="font-mono text-xs text-gray-700">#{order.id}</span>
+                                                            
+                                                            {/* Assuming the "generated ID" is stored in a field like 'reference_id' */}
+                                                            {('reference_id' in order && order.reference_id) && (
+                                                                <span className="ml-3 text-blue-700 font-semibold text-xs md:text-sm">
+                                                                    Code: {order.reference_id}
+                                                                </span>
+                                                            )}
+                                                        </p>
+
                                                         <div className="text-xs text-gray-500 mt-1 space-y-1">
                                                             <p>Created by {order.created_by_staff_name || 'Staff'} on {new Date(order.created_on).toLocaleDateString()}</p>
                                                         </div>
@@ -454,8 +469,35 @@ export const OrdersTab: React.FC<OrdersTabProps> = ({
                                                             <ImageIcon className="h-3 w-3 mr-1" />Images
                                                         </Button>
 
-                                                        <Button variant="outline" size="sm" onClick={() => handleEditOrder(order)}><Edit className="h-3 w-3 mr-1" />Edit</Button>
-                                                        
+                                                        {/* Conditional Edit Button */}
+                                                        {order.status === 'pending' ? (
+                                                            <Button variant="outline" size="sm" onClick={() => handleEditOrder(order)}>
+                                                                <Edit className="h-3 w-3 mr-1" />Edit
+                                                            </Button>
+                                                        ) : (
+                                                            <AlertDialog>
+                                                                <AlertDialogTrigger asChild>
+                                                                    <Button variant="outline" size="sm" className="opacity-60 cursor-not-allowed">
+                                                                        <Edit className="h-3 w-3 mr-1" />Edit
+                                                                    </Button>
+                                                                </AlertDialogTrigger>
+                                                                <AlertDialogContent>
+                                                                    <AlertDialogHeader>
+                                                                        <AlertDialogTitle>Cannot Edit Order</AlertDialogTitle>
+                                                                        <AlertDialogDescription>
+                                                                            This order's status is "{order.status}". You can only edit orders that are 'pending'.
+                                                                            <br /><br />
+                                                                            To make changes, please request the project manager to change its status back to 'pending'.
+                                                                        </AlertDialogDescription>
+                                                                    </AlertDialogHeader>
+                                                                    <AlertDialogFooter>
+                                                                        <AlertDialogCancel>OK</AlertDialogCancel>
+                                                                    </AlertDialogFooter>
+                                                                </AlertDialogContent>
+                                                            </AlertDialog>
+                                                        )}
+                                                        {/* End Conditional Edit Button */}
+
                                                         <AlertDialog>
                                                             <AlertDialogTrigger asChild>
                                                                 <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700"><Trash2 className="h-3 w-3 mr-1" />Delete</Button>
